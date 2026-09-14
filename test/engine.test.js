@@ -247,5 +247,40 @@ eq(bt.dir, 'falling', '30% -> 20% across back-filled months reads as falling');
 snapStore.recordAt(augRows, 'aug.csv', SEP);
 eq(snapStore.load().snaps.length, 2, 're-running back-fill updates in place, no duplicate day');
 
+
+console.log('\n=== 11. CARRIER STATUS IN THE POOL TABLE ===');
+// Sort order: carriers' verdict first, worst first. "Never scanned" sinks —
+// it is not a pass and must not sit among the clean numbers.
+eq(repRank({known:true,  flagged:true }), 0, 'flagged sorts first');
+eq(repRank({known:true,  flagged:false}), 1, 'clean sorts second');
+eq(repRank({known:false, flagged:null }), 2, 'unscanned sorts last');
+eq(repRank(null), 2, 'missing rep sorts last, no throw');
+
+// repCell renders through whatever createElement it is handed.
+const H = (t,p,...c) => ({t, p: p||{}, kids: c.flat(Infinity).filter(x=>x!=null)});
+const txt = el => (el.kids||[]).filter(k=>typeof k==='string').join('');
+let cell = repCell({known:true, flagged:true, flaggedCarriers:['att'], flaggedBy:['Convoso Ignite'], labels:['Scam Likely'], at:Date.now()}, H);
+eq(cell.p.className, 'rep-pill rep-flag', 'flagged cell gets the flag class');
+eq(txt(cell), 'AT&T', 'single flagging carrier is named outright');
+ok(/Flagged by: AT&T/.test(cell.p.title), 'tooltip names the carrier');
+ok(/Scam Likely/.test(cell.p.title), 'tooltip carries the label shown to callers');
+
+cell = repCell({known:true, flagged:true, flaggedCarriers:['att','tmobile','verizon'], flaggedBy:[], labels:[], at:Date.now()}, H);
+eq(txt(cell), 'Flagged \u00d73', 'multiple carriers collapse to a count');
+
+cell = repCell({known:true, flagged:false, carriers:{}, at:Date.now()}, H);
+eq(cell.p.className, 'rep-pill rep-clean', 'clean cell gets the clean class');
+eq(txt(cell), 'Clean', 'clean cell says Clean');
+ok(/list\/targeting problem, not a spam problem/.test(cell.p.title),
+   'clean tooltip states the consequence: do not treat low CR here as spam');
+
+cell = repCell({known:false, flagged:null}, H);
+eq(cell.p.className, 'rep-pill rep-none', 'unscanned cell is visually distinct');
+eq(txt(cell), 'unscanned', 'unscanned says so in words');
+ok(/NOT known to be clean/.test(cell.p.title),
+   'unscanned tooltip refuses to imply a pass — the one thing this cell must never do');
+cell = repCell(null, H);
+eq(txt(cell), 'unscanned', 'null rep renders unscanned rather than throwing');
+
 console.log(`\n${'='.repeat(52)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(52)}`);
 process.exit(fail ? 1 : 0);

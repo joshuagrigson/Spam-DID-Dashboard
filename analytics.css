@@ -195,3 +195,15 @@
 .dx-guess { margin-left:6px; font-size:9.5px; padding:1px 6px; border-radius:6px;
   color:#b45309; background:rgba(217,119,6,.12); border:1px solid rgba(217,119,6,.25); }
 .dx-sum i { vertical-align:-1px; margin-right:2px; }
+
+/* Carrier status pill — lives in the POOL table, not just Analytics ---------- */
+/* Reads at a glance on a dense row: icon + word, never colour alone, and an
+   "unscanned" state that is visibly NOT a pass. Treating "we never looked" as
+   green is the one thing this cell must never do. */
+.rep-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px;
+  font-size:10.5px; font-weight:700; white-space:nowrap; letter-spacing:.01em; cursor:help; }
+.rep-pill i { font-size:12px; }
+.rep-flag  { color:#7f1414; background:#FBE4E4; border:1px solid #cc2828; }
+.rep-clean { color:#1e3f06; background:#E7F4DA; border:1px solid #4f8210; }
+.rep-none  { color:#7e848f; background:rgba(23,26,33,.045); border:1px dashed rgba(23,26,33,.22);
+  font-weight:600; font-style:italic; }

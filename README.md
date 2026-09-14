@@ -4,7 +4,7 @@ Spam-risk and contact-rate monitoring for the Southern Tier DID pool.
 Static site: React 18 UMD + PapaParse from CDN, **no build step**. Open
 `index.html` and it runs.
 
-**Verified against deployed v6.24.0 on 2026-09-14.**
+**Verified against deployed v6.25.0 on 2026-09-14.**
 Source of truth is <https://didspamdashboard.netlify.app/>. Pull live → patch →
 deploy → resync. Never the reverse. A version stamp that no longer matches the
 live header is the signal that this file has drifted.
@@ -51,7 +51,7 @@ Grades: A ≥80, B ≥65, C ≥50, D ≥35, F below.
 DNC Alert rule: `dncCount >= 4 && calls > 50 && cr <= 25` — a three-way AND, so
 stray DNC hits on low-volume or otherwise-healthy numbers do not alert.
 
-## The intelligence layer (v6.24.0)
+## The intelligence layer (v6.25.0)
 
 ### Why snapshots exist
 Every import used to overwrite the pool, so all previous data was destroyed and
@@ -111,6 +111,25 @@ Hiya, TNS, First Orion, Nomorobo, …) are recognized individually.
 different slice of the ecosystem, so a "clean" from one is not a clean from all —
 but a "flagged" from one is real. A number with no scan is shown as **unknown**,
 never assumed clean.
+
+### Where the carrier verdict shows up
+The **Pool table** carries a **Carrier** column on every row — `Flagged` (naming
+the carrier, or `Flagged ×N` when several), `Clean`, or `unscanned`. It is
+sortable (flagged first, unscanned last) and has its own **Carrier Flagged**
+status tab beside DNC Alert.
+
+`unscanned` is deliberately styled as *not a pass*: dashed border, italic, grey.
+Treating "we never looked" as green is the one mistake this cell must never make,
+and it is asserted in the test suite.
+
+Note the existing **At Risk/F** tab counts grade F — a *performance* verdict — and
+is unrelated to carrier flagging. The two are counted separately on purpose
+(`counts.flagged` vs `counts.carrierFlagged`); a number can be grade A and still
+be flagged by AT&T, and that combination is exactly the one worth catching.
+
+`calcScore()` is **not** fed from reputation. The score stays a pure Convoso
+performance measure and the carrier verdict sits beside it as an independent
+fact, so neither silently contaminates the other.
 
 ### Getting the data in when a tool has no export
 Ignite / CallPurity / DNC.com / Caller ID Reputation are web-UI-first. When you

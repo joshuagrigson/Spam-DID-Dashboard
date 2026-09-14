@@ -94,6 +94,20 @@ function renderOn(tab){
   catch(e){ fails++; console.log(`  FAIL  render sub-tab "${tab}" -> ${e.message}`); return ''; }
 }
 
+console.log('\n=== POOL TABLE KNOWS THE CARRIER VERDICT ===');
+// This is the whole point of the change: the answer has to be where the
+// per-number decision is actually made, not one tab away.
+chk(html.includes('Carrier'),          'pool table has a Carrier column');
+chk(/Carrier Flagged \(\d+\)/.test(html), 'pool has a "Carrier Flagged" status tab with a count');
+chk(html.includes('rep-flag'),         'the carrier-flagged number renders its flag pill in the pool table');
+chk(html.includes('rep-none'),         'never-scanned numbers render as "unscanned", not as clean');
+chk(!/rep-clean[^]*rep-clean[^]*rep-clean/.test(html) || html.includes('rep-none'),
+    'unscanned numbers are not silently shown as clean');
+// The campaign band must span the new column count or the table misaligns.
+chk(/colspan="10"/i.test(html),        'campaign band spans all 10 columns after the new one was added');
+// The pre-existing grade-F "Flagged" count must NOT have been repurposed.
+chk(/At Risk\/F \(\d+\)/.test(html),   'existing grade-based tabs still intact and separately counted');
+
 console.log('\n=== ANALYTICS VIEW: EVERY SUB-TAB RENDERS ===');
 const tabHtml = {};
 for (const t of ['command','trends','rep','buy','area','burn','curve','camp','pivot']) {

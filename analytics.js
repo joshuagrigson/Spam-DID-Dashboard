@@ -1489,3 +1489,41 @@ function BackfillImport(props) {
           hx('i', { className: 'ti ti-check' }),
           good.length ? 'Back-fill ' + days.size + ' day' + (days.size === 1 ? '' : 's') : 'Nothing to add'))));
 }
+
+// ══ 14. CARRIER STATUS IN THE POOL TABLE ═════════════════════════════════════
+// The Analytics tabs answer "which numbers are flagged?" in aggregate. The POOL
+// table is where the per-number work actually happens — deciding whether to queue
+// a specific DID for replacement — so the carrier verdict has to be visible on
+// the row itself, not one tab away. Anything less and the answer exists but is
+// not where the question gets asked.
+
+// Sort key: flagged first, then clean, then never-scanned. Sorting by "worst"
+// should surface the numbers carriers have actually condemned.
+function repRank(rep) {
+  if (!rep) return 2;
+  if (rep.flagged === true)  return 0;
+  if (rep.flagged === false) return 1;
+  return 2;
+}
+
+// Compact status cell. Colour never travels alone — icon + word carry it too.
+function repCell(rep, h_) {
+  const H = h_ || hx;
+  if (!rep || !rep.known) {
+    return H('span', { className: 'rep-pill rep-none', title: 'No carrier scan on record for this number. It is NOT known to be clean — import a reputation scan to find out.' },
+      H('i', { className: 'ti ti-help-circle' }), 'unscanned');
+  }
+  if (rep.flagged === true) {
+    const cs = (rep.flaggedCarriers || []).map(c => CARRIER_LB[c] || c);
+    const by = (rep.flaggedBy || []).join(', ');
+    const tip = (cs.length ? 'Flagged by: ' + cs.join(', ') + '. ' : '')
+              + (by ? 'Source: ' + by + '. ' : '')
+              + (rep.labels && rep.labels.length ? 'Shows as: ' + rep.labels.join(', ') + '. ' : '')
+              + 'Checked ' + daysAgo(rep.at) + '.';
+    return H('span', { className: 'rep-pill rep-flag', title: tip },
+      H('i', { className: 'ti ti-alert-triangle' }),
+      cs.length ? (cs.length === 1 ? cs[0] : 'Flagged ×' + cs.length) : 'Flagged');
+  }
+  return H('span', { className: 'rep-pill rep-clean', title: 'Carriers scanned this number and did not flag it. Checked ' + daysAgo(rep.at) + '. A low contact rate here is a list/targeting problem, not a spam problem.' },
+    H('i', { className: 'ti ti-circle-check' }), 'Clean');
+}
