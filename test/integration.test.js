@@ -71,7 +71,13 @@ html = tryRender('with saved pool + snapshots + reputation');
 
 const chk=(c,m)=>{ if(c) console.log('  PASS  '+m); else { fails++; console.log('  FAIL  '+m); } };
 console.log('\n=== ASSERTIONS: POOL VIEW ===');
-chk(html.includes('v6.23.0'), 'version banner shows v6.23.0');
+// Read the version from source rather than hardcoding it, so a release bump
+// does not fail the suite. What matters is that the banner MATCHES the source.
+const srcVer = (fs.readFileSync(base+'app.js','utf8').match(/v6\.\d+\.\d+/) || [])[0];
+chk(!!srcVer && html.includes(srcVer), `version banner matches app.js (${srcVer})`);
+const htmlVer = (fs.readFileSync(base+'index.html','utf8').match(/analytics\.js\?v=(\d+)/) || [])[1];
+const cssVer  = (fs.readFileSync(base+'index.html','utf8').match(/analytics\.css\?v=(\d+)/) || [])[1];
+chk(htmlVer && htmlVer === cssVer, `cache-buster consistent across assets (v=${htmlVer})`);
 chk(html.includes('DNC Alert'), 'existing pool tabs untouched');
 
 // Drive the app onto the Analytics view, and onto each sub-tab in turn, by
