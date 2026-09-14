@@ -194,5 +194,58 @@ eq(canonPh('12015551111'), '2015551111', '11-digit canonicalised');
 eq(canonPh(null), '', 'null phone -> empty, no throw');
 ok(classify({did:'12015551111',area:'201',cr:0,calls:0,dncCount:0}, buildCtx([],{},[])).key==='nodata','zero-call number handled');
 
+
+console.log('\n=== 9. CLIPBOARD HTML (web-UI copy/paste) ===');
+// What a browser actually puts on the clipboard when you select a table in a page.
+const clipHtml = `<meta charset='utf-8'><table class="results">
+<thead><tr><th>Phone Number</th><th>AT&amp;T</th><th>T-Mobile</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>(201)&nbsp;555-1111</td><td>Spam&nbsp;Likely</td><td>Clean</td><td>Flagged</td></tr>
+<tr><td><span class="x">2015552222</span></td><td>Clean</td><td>Clean</td><td>Clean</td></tr>
+</tbody></table>`;
+let g = htmlTableToGrid(clipHtml);
+ok(!!g, 'clipboard HTML table parsed');
+eq(g.headers, ['Phone Number','AT&T','T-Mobile','Status'], 'headers decoded (entities unescaped)');
+eq(g.rows.length, 2, 'both body rows extracted');
+let hrecs = buildRepRecords(g.rows, detectRepCols(g.headers), 'calleridrep');
+eq(hrecs[0].phone, '2015551111', 'nbsp/paren formatting stripped from the number');
+eq(hrecs[0].flagged, true,  'row 1 flagged');
+eq(hrecs[1].flagged, false, 'row 2 clean (nested span unwrapped)');
+// A toolbar/title row above the header must not become the header.
+g = htmlTableToGrid(`<table><tr><td colspan="2">My Numbers — export</td></tr>
+<tr><th>DID</th><th>Status</th></tr><tr><td>2015553333</td><td>Spam</td></tr>
+<tr><td>2015554444</td><td>Clean</td></tr></table>`);
+eq(g.headers, ['DID','Status'], 'title row above the header is skipped');
+eq(g.rows.length, 2, 'body rows survive the skip');
+// parsePasted prefers HTML, falls back to text.
+eq(parsePasted(clipHtml, 'junk').headers.length, 4, 'parsePasted prefers the HTML flavour');
+eq(parsePasted('', 'A,B\n1,2\n').headers, ['A','B'], 'parsePasted falls back to delimited text');
+eq(htmlTableToGrid('no tables here'), null, 'non-table HTML returns null, no throw');
+
+console.log('\n=== 10. HISTORY BACK-FILL ===');
+eq(dateFromName('contact_rate_2026-08-01.csv'), Date.parse('2026-08-01T12:00:00'), 'ISO date in filename');
+eq(dateFromName('report 9-14-2026.csv'),        Date.parse('2026-09-14T12:00:00'), 'US date in filename');
+eq(dateFromName('20260703_export.csv'),         Date.parse('2026-07-03T12:00:00'), 'compact date in filename');
+eq(dateFromName('convoso_export.csv'), null, 'undated filename -> null (user sets it)');
+
+// parseConvosoReport() depends on app.js's autoDetect(), so it is exercised in
+// the integration suite where app.js is actually loaded.
+snapStore.clear();
+const AUG = Date.parse('2026-08-01T12:00:00'), SEP = Date.parse('2026-09-01T12:00:00');
+const augRows=[{did:'12015551111',calls:300,cr:20,dncCount:1}];
+snapStore.recordAt(augRows, 'aug.csv', SEP);                        // out of order on purpose
+snapStore.recordAt([{did:'12015551111',calls:300,cr:30,dncCount:0}], 'jul.csv', AUG);
+let sn = snapStore.load().snaps;
+eq(sn.length, 2, 'two back-filled days');
+ok(sn[0].t < sn[1].t, 'snapshots re-sorted into chronological order regardless of insert order');
+eq(sn[0].day, '2026-08-01', 'earliest day first');
+// Back-filled history is immediately readable as a trend.
+let bt = trendFor('12015551111', snapStore.load().snaps);
+ok(bt.ok, 'trend computable straight from back-filled data');
+eq(bt.dir, 'falling', '30% -> 20% across back-filled months reads as falling');
+// Re-running the same back-fill must not duplicate the day.
+snapStore.recordAt(augRows, 'aug.csv', SEP);
+eq(snapStore.load().snaps.length, 2, 're-running back-fill updates in place, no duplicate day');
+
 console.log(`\n${'='.repeat(52)}\n  ${pass} passed, ${fail} failed\n${'='.repeat(52)}`);
 process.exit(fail ? 1 : 0);

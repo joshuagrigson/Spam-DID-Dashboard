@@ -111,6 +111,20 @@ chk(tabHtml.rep.includes('Convoso Ignite') && tabHtml.rep.includes('CallPurity')
 chk(/Scam Likely|Flagged numbers/.test(tabHtml.rep), 'Reputation lists the flagged number');
 chk(/Target calls per working number/.test(tabHtml.buy), 'Buy list exposes the target control');
 chk(tabHtml.area.includes('Area-code health'),      'original Area-code board still intact');
+chk(/Back-fill from saved reports/.test(tabHtml.trends), 'Trends offers the back-fill lane');
+
+console.log('\n=== BACK-FILL PARSES A REAL CONVOSO REPORT (needs app.js autoDetect) ===');
+const conv = 'Campaign,DID,Calls,Contacts,Contacts %,DNC\n'
+           + 'Southern Tier 2,12015551111,300,60,20.0,1\n'
+           + 'Southern Tier 2,12015552222,400,40,10.0,5\n';
+try {
+  const pc = sandbox.parseConvosoReport(conv);
+  chk(pc.rows.length === 2, 'Convoso report parsed through app.js autoDetect');
+  chk(JSON.stringify(pc.rows[0]) === JSON.stringify({did:'2015551111',calls:300,cr:20,dncCount:1}),
+      'row canonicalised to snapshot shape (10-digit key, % stripped)');
+  const bad = sandbox.parseConvosoReport('Foo,Bar\n1,2\n');
+  chk(bad.rows.length === 0, 'a file with no DID/Calls columns yields nothing rather than garbage');
+} catch(e){ fails++; console.log('  FAIL  parseConvosoReport -> '+e.message); }
 
 const real = warnings.filter(w=>!/useLayoutEffect|not wrapped in act/.test(w));
 console.log('\n=== WARNINGS: ' + (real.length ? real.length : 'none') + ' ===');

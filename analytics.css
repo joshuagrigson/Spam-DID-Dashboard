@@ -188,3 +188,10 @@
   .dx-modal { max-height:94vh; }
   .dx-chart { height:80px; }
 }
+
+/* Back-fill ---------------------------------------------------------------- */
+.dx-date { padding:3px 7px; border-radius:7px; border:1px solid rgba(23,26,33,.18);
+  font-size:11px; font-family:inherit; background:#fff; color:#2b313c; }
+.dx-guess { margin-left:6px; font-size:9.5px; padding:1px 6px; border-radius:6px;
+  color:#b45309; background:rgba(217,119,6,.12); border:1px solid rgba(217,119,6,.25); }
+.dx-sum i { vertical-align:-1px; margin-right:2px; }

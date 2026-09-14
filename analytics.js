@@ -784,8 +784,11 @@ function CommandCenter(props) {
 // Only possible because snapshots exist. Before this, every import destroyed the
 // previous one and "trend" had nothing to stand on.
 function TrendsView(props) {
-  const { rows, snaps } = props;
+  const { rows, snaps, onBackfill } = props;
   const [sortBy, setSortBy] = React.useState('fall');
+  const backfillBtn = primary => onBackfill && hx('button',
+    { className: 'dx-btn' + (primary ? ' dx-btn-p' : ''), onClick: onBackfill },
+    hx('i', { className: 'ti ti-history' }), 'Back-fill from saved reports');
 
   if (!snaps || snaps.length < 2) {
     return hx('div', { className: 'dx-empty dx-empty-lg' },
@@ -797,7 +800,9 @@ function TrendsView(props) {
         + (snaps.length === 1
             ? 'The first was captured on ' + snaps[0].day + '. Import the next report and this turns into real trend lines.'
             : 'Import a Contact Rate Report from the Pool view to start the record.')
-        + ' Nothing is back-filled — history only runs from the first import after this feature shipped.'));
+        + ' Nothing is back-filled automatically — but if you have older Convoso reports saved, '
+        + 'replay them here and this page works today instead of in a fortnight.'),
+      hx('div', { style: { marginTop: 14 } }, backfillBtn(true)));
   }
 
   const pool = poolTrend(snaps);
@@ -831,6 +836,8 @@ function TrendsView(props) {
         + 'report was pulled over, which the dashboard cannot verify — so volume is shown as reported and '
         + 'never drives a recommendation by itself. ',
         snaps.length + ' snapshots on record, ' + spanDays + ' days from ' + first.day + ' to ' + last.day + '.')),
+
+    hx('div', { style: { display: 'flex', justifyContent: 'flex-end', marginBottom: 4 } }, backfillBtn(false)),
 
     hx('div', { className: 'dx-kpis' },
       kpi('Pool contact rate', pfmt(last.avgCr), crDelta, true),
@@ -1092,9 +1099,9 @@ function RepImport(props) {
   const [err, setErr]       = React.useState('');
   const fileRef = React.useRef(null);
 
-  function ingest(text, name) {
+  function ingest(text, name, htmlFlavour) {
     setErr('');
-    const p = parseRepText(text);
+    const p = htmlFlavour ? parsePasted(htmlFlavour, text) : parseRepText(text);
     if (!p.headers.length || !p.rows.length) {
       setErr('Could not find a table in that. Make sure the first line is the header row.');
       setParsed(null); return;
@@ -1160,8 +1167,19 @@ function RepImport(props) {
           hx('textarea', {
             className: 'dx-paste', value: raw, placeholder: 'Paste the copied table here…',
             onChange: e => setRaw(e.target.value),
-            onPaste: e => { const t = (e.clipboardData || window.clipboardData).getData('text');
-                            if (t) { e.preventDefault(); setRaw(t); ingest(t, 'pasted'); } },
+            onPaste: e => {
+              const cb = e.clipboardData || window.clipboardData;
+              const t = cb.getData('text');
+              // The HTML flavour carries the real table structure; plain text is
+              // whatever the page's whitespace collapsed to. Prefer the former.
+              let htmlFlavour = '';
+              try { htmlFlavour = cb.getData('text/html') || ''; } catch (ex) { htmlFlavour = ''; }
+              if (t || htmlFlavour) {
+                e.preventDefault();
+                setRaw(t || '(table pasted from the page)');
+                ingest(t, 'pasted', htmlFlavour);
+              }
+            },
           }),
           raw && !parsed && hx('button', { className: 'dx-btn dx-btn-p', onClick: () => ingest(raw, 'pasted') },
             hx('i', { className: 'ti ti-wand' }), 'Read this table'),
@@ -1217,4 +1235,257 @@ function RepImport(props) {
         hx('button', { className: 'dx-btn dx-btn-p', disabled: !records.length, onClick: commit },
           hx('i', { className: 'ti ti-check' }),
           records.length ? 'Import ' + records.length.toLocaleString() + ' numbers' : 'Nothing to import'))));
+}
+
+// ══ 12. CLIPBOARD HTML ═══════════════════════════════════════════════════════
+// When you select a table in a web page and copy it, the browser puts BOTH
+// text/plain and text/html on the clipboard. The plain-text flavour is whatever
+// the page's whitespace happened to collapse to — ragged, sometimes with the
+// columns run together. The HTML flavour is the actual table structure.
+//
+// Reading the HTML flavour is what makes "copy it out of Ignite and paste it
+// here" reliable rather than hit-and-miss, and it is the only ingest path
+// available when a tool offers no export at all.
+
+function stripTags(s) {
+  return String(s)
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"')
+    .replace(/&#(\d+);/g, (m, d) => String.fromCharCode(+d))
+    .replace(/\s+/g, ' ').trim();
+}
+
+// Pull the first real table out of clipboard HTML. Uses DOMParser in the browser
+// and a tag-scanning fallback elsewhere (which is also what the tests exercise).
+function htmlTableToGrid(html) {
+  if (!html || !/<t[rd]/i.test(html)) return null;
+  let rows = null;
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      // Deepest-first: some tools wrap the real table in layout tables.
+      const tables = Array.from(doc.querySelectorAll('table'));
+      const best = tables.sort((a, b) =>
+        b.querySelectorAll('tr').length - a.querySelectorAll('tr').length)[0];
+      if (best) {
+        rows = Array.from(best.querySelectorAll('tr')).map(tr =>
+          Array.from(tr.querySelectorAll('th,td')).map(c => stripTags(c.innerHTML)));
+      }
+    } catch (e) { rows = null; }
+  }
+  if (!rows) {
+    rows = (html.match(/<tr[\s\S]*?<\/tr>/gi) || []).map(tr =>
+      (tr.match(/<t[hd][\s\S]*?<\/t[hd]>/gi) || []).map(c => stripTags(c)));
+  }
+  rows = rows.filter(r => r.length && r.some(c => c !== ''));
+  if (rows.length < 2) return null;
+
+  // Skip any title/toolbar rows above the real header: the header is the first
+  // row whose width matches the body's most common width.
+  const widths = {};
+  rows.forEach(r => { widths[r.length] = (widths[r.length] || 0) + 1; });
+  const modal = +Object.entries(widths).sort((a, b) => b[1] - a[1])[0][0];
+  const start = rows.findIndex(r => r.length === modal);
+  const grid = rows.slice(start < 0 ? 0 : start).filter(r => r.length === modal);
+  if (grid.length < 2) return null;
+
+  const headers = grid[0].map((hdr, i) => hdr || ('__col_' + i + '__'));
+  const out = grid.slice(1).map(r => {
+    const o = {};
+    headers.forEach((hdr, i) => { o[hdr] = r[i] === undefined ? '' : r[i]; });
+    return o;
+  });
+  return { headers, rows: out };
+}
+
+// One entry point for every paste: HTML table first, delimited text second.
+function parsePasted(htmlFlavour, textFlavour) {
+  const g = htmlTableToGrid(htmlFlavour);
+  if (g && g.headers.length) return g;
+  return parseRepText(textFlavour);
+}
+
+// ══ 13. HISTORY BACK-FILL ════════════════════════════════════════════════════
+// Trends need two observations. Without back-fill the tab is empty until the
+// NEXT import and useful only after the one after that. Saved Convoso exports
+// already contain that history — they just need dating and replaying.
+//
+// Back-fill writes SNAPSHOTS ONLY. It never touches the live pool, so replaying
+// six months of old reports cannot disturb the current one.
+
+// Find the report date in a filename. Convoso exports and hand-saved files use
+// a handful of shapes; anything unrecognised is left for the user to set.
+function dateFromName(name) {
+  const n = String(name || '');
+  let m;
+  if ((m = n.match(/(20\d{2})[-_./]?(\d{2})[-_./]?(\d{2})/)))            // 2026-09-14
+    return Date.parse(`${m[1]}-${m[2]}-${m[3]}T12:00:00`) || null;
+  if ((m = n.match(/(\d{1,2})[-_./](\d{1,2})[-_./](20\d{2})/))) {        // 9-14-2026
+    const mm = String(m[1]).padStart(2, '0'), dd = String(m[2]).padStart(2, '0');
+    return Date.parse(`${m[3]}-${mm}-${dd}T12:00:00`) || null;
+  }
+  return null;
+}
+
+// Write a snapshot AT a given date, keeping the list ordered and merging any
+// existing snapshot for that same day.
+snapStore.recordAt = function (rows, fname, when) {
+  if (!rows || !rows.length) return snapStore.load();
+  const day = dayKey(when);
+  const obj = snapStore.load();
+  const idx = obj.snaps.findIndex(s => s.day === day);
+  const d = idx >= 0 ? { ...obj.snaps[idx].d } : {};
+  for (const r of rows) {
+    const p = canonPh(r.did);
+    if (!p) continue;
+    d[p] = [ +r.calls || 0, Math.round((+r.cr || 0) * 10) / 10, +r.dncCount || 0 ];
+  }
+  const entry = { t: when, day, f: fname || '', d };
+  const snaps = idx >= 0
+    ? obj.snaps.map((s, i) => (i === idx ? entry : s))
+    : [...obj.snaps, entry];
+  snaps.sort((a, b) => a.t - b.t);
+  return snapStore.save({ v: 1, snaps });
+};
+
+// Parse one saved Convoso Contact Rate Report into snapshot rows, reusing
+// app.js's own column detection so back-fill and live import agree exactly.
+function parseConvosoReport(text) {
+  const res = Papa.parse(String(text || '').trim(), {
+    header: true, skipEmptyLines: true,
+    transformHeader: (hdr, i) => (hdr && hdr.trim()) ? hdr : ('__col_' + i + '__'),
+  });
+  const headers = (res.meta && res.meta.fields) ? res.meta.fields : [];
+  if (!headers.length) return { rows: [], headers: [], map: null };
+  const map = autoDetect(headers);
+  if (!map.did || !map.calls) return { rows: [], headers, map };
+  const rows = (res.data || []).map(row => {
+    const raw = String(row[map.did] || '').trim();
+    if (!raw || raw.replace(/\D/g, '').length < 10) return null;
+    return {
+      did: canonPh(raw),
+      calls: parseInt(row[map.calls]) || 0,
+      cr: parseFloat(String(row[map.cr] || '').replace('%', '')) || 0,
+      dncCount: map.dncCount ? (parseInt(row[map.dncCount]) || 0) : 0,
+    };
+  }).filter(Boolean);
+  return { rows, headers, map };
+}
+
+// ── Back-fill modal ──────────────────────────────────────────────────────────
+function BackfillImport(props) {
+  const { onClose, onDone } = props;
+  const [files, setFiles] = React.useState([]);   // {name, when, rows, err, id}
+  const [busy, setBusy]   = React.useState(false);
+  const fileRef = React.useRef(null);
+  const uid = React.useRef(0);
+
+  function addFiles(e) {
+    const list = Array.from(e.target.files || []);
+    if (!list.length) return;
+    setBusy(true);
+    let pending = list.length;
+    const acc = [];
+    list.forEach(f => {
+      const rd = new FileReader();
+      rd.onload = ev => {
+        let parsed = { rows: [] }, err = '';
+        try { parsed = parseConvosoReport(String(ev.target.result || '')); }
+        catch (ex) { err = 'Could not read this file.'; }
+        if (!err && !parsed.rows.length) {
+          err = parsed.headers && parsed.headers.length
+            ? 'No DID/Calls columns found. Saw: ' + parsed.headers.slice(0, 6).join(', ')
+            : 'No table found in this file.';
+        }
+        acc.push({ id: ++uid.current, name: f.name, when: dateFromName(f.name) || f.lastModified || Date.now(),
+                   dated: !!dateFromName(f.name), rows: parsed.rows, err });
+        if (--pending === 0) {
+          acc.sort((a, b) => a.when - b.when);
+          setFiles(prev => [...prev, ...acc].sort((a, b) => a.when - b.when));
+          setBusy(false);
+        }
+      };
+      rd.readAsText(f);
+    });
+    e.target.value = '';
+  }
+
+  const good = files.filter(f => !f.err && f.rows.length);
+  // Two reports dated the same day collapse into one snapshot — say so before
+  // the user commits, not after the count comes out short.
+  const days = new Set(good.map(f => dayKey(f.when)));
+  const collapsing = good.length - days.size;
+
+  function commit() {
+    let res = null;
+    for (const f of good) res = snapStore.recordAt(f.rows, f.name, f.when);
+    onDone(res || snapStore.load(), good.length, days.size);
+  }
+
+  const setWhen = (id, v) => setFiles(fs => fs.map(f =>
+    f.id === id ? { ...f, when: Date.parse(v + 'T12:00:00') || f.when, dated: true } : f)
+    .sort((a, b) => a.when - b.when));
+
+  return hx('div', { className: 'dx-modal-bg', onClick: e => { if (e.target === e.currentTarget) onClose(); } },
+    hx('div', { className: 'dx-modal' },
+      hx('div', { className: 'dx-modal-h' },
+        hx('span', null, hx('i', { className: 'ti ti-history' }), ' Back-fill history from saved reports'),
+        hx('button', { className: 'dx-x', onClick: onClose }, hx('i', { className: 'ti ti-x' }))),
+
+      hx('div', { className: 'dx-modal-b' },
+        hx('div', { className: 'dx-how' },
+          hx('b', null, 'Drop in your saved Convoso Contact Rate Reports. '),
+          'Each one becomes a dated snapshot, so Trends works immediately instead of after '
+          + 'your next two imports. Dates are read from the filename where possible — check '
+          + 'every row below and correct any that are wrong, because the date is what the '
+          + 'trend lines are plotted against.'),
+        hx('div', { className: 'dx-note', style: { margin: '10px 0' } },
+          hx('i', { className: 'ti ti-shield-check' }),
+          hx('div', null, hx('b', null, 'This only writes history. '),
+            'Your current pool is not touched, so replaying old reports cannot disturb what '
+            + 'is on screen now. Re-running this is safe — a report dated the same day as an '
+            + 'existing snapshot updates it rather than adding a duplicate.')),
+
+        hx('button', { className: 'dx-btn dx-btn-p', onClick: () => fileRef.current && fileRef.current.click() },
+          hx('i', { className: 'ti ti-files' }), files.length ? 'Add more reports' : 'Choose saved reports'),
+        hx('input', { ref: fileRef, type: 'file', accept: '.csv,.tsv,.txt', multiple: true,
+                      style: { display: 'none' }, onChange: addFiles }),
+        busy && hx('span', { style: { marginLeft: 10, fontSize: 11.5, color: '#6b7280' } }, 'Reading…'),
+
+        files.length > 0 && hx('table', { className: 'dx-table', style: { marginTop: 12 } },
+          hx('thead', null, hx('tr', null,
+            hx('th', null, 'File'), hx('th', null, 'Report date'),
+            hx('th', { className: 'num' }, 'Numbers'), hx('th', null, ''))),
+          hx('tbody', null, files.map(f => hx('tr', { key: f.id },
+            hx('td', null, f.name),
+            hx('td', null, hx('input', {
+              type: 'date', className: 'dx-date',
+              value: new Date(f.when).toISOString().slice(0, 10),
+              onChange: e => setWhen(f.id, e.target.value),
+            }), !f.dated && !f.err && hx('span', { className: 'dx-guess' }, 'guessed')),
+            hx('td', { className: 'num' }, f.err ? '—' : f.rows.length.toLocaleString()),
+            hx('td', null, f.err
+              ? hx('span', { style: { color: '#9b1c1c', fontSize: 10.5 } }, f.err)
+              : hx('button', { className: 'dx-x', title: 'Remove',
+                    onClick: () => setFiles(fs => fs.filter(x => x.id !== f.id)) },
+                  hx('i', { className: 'ti ti-trash' }))))))),
+
+        good.length > 0 && hx('div', { className: 'dx-sum', style: { marginTop: 12 } },
+          hx('div', null, hx('b', null, good.length), ' reports ready'),
+          hx('div', null, hx('b', null, days.size), ' snapshot days'),
+          collapsing > 0 && hx('div', { style: { color: '#b45309' } },
+            hx('i', { className: 'ti ti-alert-triangle' }),
+            ' ' + collapsing + ' share a date with another and will merge')),
+
+        files.length === 0 && hx('div', { className: 'dx-empty', style: { marginTop: 14 } },
+          hx('i', { className: 'ti ti-file-search' }),
+          hx('div', null, 'No reports added yet. You can select several at once.'))),
+
+      hx('div', { className: 'dx-modal-f' },
+        hx('button', { className: 'dx-btn', onClick: onClose }, 'Cancel'),
+        hx('button', { className: 'dx-btn dx-btn-p', disabled: !good.length, onClick: commit },
+          hx('i', { className: 'ti ti-check' }),
+          good.length ? 'Back-fill ' + days.size + ' day' + (days.size === 1 ? '' : 's') : 'Nothing to add'))));
 }

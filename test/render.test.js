@@ -40,7 +40,7 @@ const rows = pool.map(d=>({...d, diag: classify(d, ctx)}));
 
 _e('\n=== RENDER: all four views, populated ===');
 render('CommandCenter',  React.createElement(CommandCenter,  {rows, snaps, repBy}));
-render('TrendsView',     React.createElement(TrendsView,     {rows, snaps}));
+render('TrendsView',     React.createElement(TrendsView,     {rows, snaps, onBackfill(){}}));
 render('ReputationView', React.createElement(ReputationView, {rows, repBy, onImport(){}, onClear(){}}));
 render('BuyListView',    React.createElement(BuyListView,    {rows, ctx}));
 render('RepImport',      React.createElement(RepImport,      {onClose(){}, onDone(){}}));
@@ -50,8 +50,9 @@ render('TrendChart',     React.createElement(TrendChart, {label:'Pool contact ra
 _e('\n=== RENDER: empty / first-run states ===');
 const ectx=buildCtx([],{},[]);
 render('CommandCenter (no data)',  React.createElement(CommandCenter,  {rows:[], snaps:[], repBy:{}}));
-render('TrendsView (no history)',  React.createElement(TrendsView,     {rows:[], snaps:[]}));
-render('TrendsView (1 snapshot)',  React.createElement(TrendsView,     {rows, snaps:[snaps[0]]}));
+render('TrendsView (no history)',  React.createElement(TrendsView,     {rows:[], snaps:[], onBackfill(){}}));
+render('TrendsView (1 snapshot)',  React.createElement(TrendsView,     {rows, snaps:[snaps[0]], onBackfill(){}}));
+render('BackfillImport',           React.createElement(BackfillImport,  {onClose(){}, onDone(){}}));
 render('ReputationView (no scans)',React.createElement(ReputationView, {rows:pool.map(d=>({...d,diag:classify(d,buildCtx(pool,{},[]))})), repBy:{}, onImport(){}, onClear(){}}));
 render('BuyListView (empty pool)', React.createElement(BuyListView,    {rows:[], ctx:ectx}));
 

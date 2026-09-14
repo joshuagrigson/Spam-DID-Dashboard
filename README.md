@@ -4,7 +4,7 @@ Spam-risk and contact-rate monitoring for the Southern Tier DID pool.
 Static site: React 18 UMD + PapaParse from CDN, **no build step**. Open
 `index.html` and it runs.
 
-**Verified against deployed v6.23.0 on 2026-09-14.**
+**Verified against deployed v6.24.0 on 2026-09-14.**
 Source of truth is <https://didspamdashboard.netlify.app/>. Pull live → patch →
 deploy → resync. Never the reverse. A version stamp that no longer matches the
 live header is the signal that this file has drifted.
@@ -51,7 +51,7 @@ Grades: A ≥80, B ≥65, C ≥50, D ≥35, F below.
 DNC Alert rule: `dncCount >= 4 && calls > 50 && cr <= 25` — a three-way AND, so
 stray DNC hits on low-volume or otherwise-healthy numbers do not alert.
 
-## The intelligence layer (v6.23.0)
+## The intelligence layer (v6.24.0)
 
 ### Why snapshots exist
 Every import used to overwrite the pool, so all previous data was destroyed and
@@ -111,6 +111,28 @@ Hiya, TNS, First Orion, Nomorobo, …) are recognized individually.
 different slice of the ecosystem, so a "clean" from one is not a clean from all —
 but a "flagged" from one is real. A number with no scan is shown as **unknown**,
 never assumed clean.
+
+### Getting the data in when a tool has no export
+Ignite / CallPurity / DNC.com / Caller ID Reputation are web-UI-first. When you
+select a table in a page and copy it, the browser puts **two** flavours on the
+clipboard: `text/plain` (whatever the page's whitespace collapsed to — ragged,
+columns sometimes run together) and `text/html` (the actual table structure).
+The paste lane reads the **HTML** flavour first and only falls back to delimited
+text, which is what makes copy-paste reliable rather than hit-and-miss. Nested
+tags, `&nbsp;`, HTML entities and a title/toolbar row above the header are all
+handled. Nothing leaves the browser and no credential is ever entered here.
+
+### Back-fill
+Trends need two observations, so without back-fill the tab is empty until your
+next import and useful only after the one after that. **Trends → Back-fill from
+saved reports** replays saved Convoso Contact Rate Reports as dated snapshots:
+select several at once, dates are read from the filename where recognisable
+(`2026-08-01`, `9-14-2026`, `20260703`) and are editable per row.
+
+Back-fill writes **snapshots only** — it never touches the live pool, so
+replaying six months of old reports cannot disturb what is on screen. Re-running
+it updates the same day rather than duplicating it. It parses reports through
+app.js's own `autoDetect()`, so back-fill and live import agree by construction.
 
 ### Buy list
 Area codes cannot be shopped around under local presence, so the only lever is
